@@ -1,0 +1,795 @@
+---
+title: "Análise Comparativa de Modelos de PM2.5 no Espírito Santo (2022-2023)"
+author: "LEONARDO VINICIUS"
+date: "2025-10-29"
+output:
+  html_document:
+    theme: cerulean
+    highlight: tango
+    toc: true
+    toc_float: true
+---
+
+## Introdução
+
+Este trabalho compara duas fontes de estimativa de um indicador de qualidade do AR(PM2.5) no estado do Espírito Santo(ES):
+
+O **PM2.5** é considerado um dos principais indicadores da qualidade do ar e uma das formas de poluição mais perigosas para a saúde humana.
+
+**PM**: Sigla para **Particulate Matter**, ou Material Particulado. Refere-se a uma mistura complexa de partículas minúsculas (sólidas e líquidas) que estão suspensas no ar.
+
+**2,5** micrômetros (µm) ou menos de diâmetro.
+
+1.  **Modelo CAMS:** O CAMS é um serviço operacional de monitoramento global, combinando uma simulação computacional com observações reais (satélite + solo) para criar um conjunto de dados global e consistente sobre a qualidade do ar.
+
+2.  **Modelo Donkelaar:** O modelo van Donkelaar é um método estatístico avançado que traduz medições visuais de satélite em concentrações de PM2.5 no solo, usando estimativas históricas para garantir eficiencia.
+
+**Objetivo:** Avaliar a correlação, concordância e as diferenças entre os dois modelos para os anos de 2022 e 2023.
+
+Trazendo uma perspectiva do estado do Espirito Santo(ES), se espera uma concentração maior de poluição do AR na região mais metropolitana que é o Centro junto a capital Vitória, assim como esperava-se menos poluição na região Norte por ser mais região de mata.  
+
+## DADOS
+
+Há uma diferença exclamativa nos dados, visto que os dados do modelo cams são diários, já no modelo donkelaar os dados estão agrupdos em estatistica descritivas(media, desvio padrão, etc) por mês, ambos para cada municipio em determinado ano
+
+Assim a principal métrica adotada para os estudos foi a media do mês do pm2.5 
+
+Descrevendo um pouco de informação aos meses:
+```{r , message=FALSE, warning=FALSE, echo=FALSE}
+
+rmv.cha <- function(x) iconv(x, to = "ASCII//TRANSLIT")
+
+### Mapas dos Indicadores
+
+library(lubridate)
+library(ggplot2)
+library(dplyr)
+library(reshape2)
+library(ggpubr)
+library(GGally)
+library(readxl)
+library(tidyverse)
+library(geobr)
+library(patchwork)
+library(tmap)
+library(plotly)
+library(DT)
+library(sf)
+library(knitr)
+library(kableExtra)
+dadoscams2023<-read_csv2("daily_pm25_all_regions_2023.csv")
+dadoscams2022<-read_csv2("daily_pm25_all_regions_2022.csv")
+
+dadosdon2023 <- read_xlsx("Donkelar_dados_completos_consolidado_2023.xlsx")  
+dadosdon2022 <- read_xlsx("Donkelar_dados_completos_consolidado_2022.xlsx")  
+
+dadosdon2022 = dadosdon2022 %>% filter(SIGLA_UF == "ES")
+dadosdon2023 = dadosdon2023 %>% filter(AREA_KM2 == "ES")
+################################################################################################
+### Ano 2022
+### PM2.5 diario
+long22=melt(dadoscams2022, id.vars="Date")
+colnames(long22)=c("Date","CodRes","pm2.5")
+long22$Cod=substring(long22$CodRes, 4,10)
+long22$Cod2=substring(long22$Cod, 1,6)
+long22$UF=substring(long22$Cod, 1,2)
+long22$Date2=ymd(long22$Date)
+
+long22$ano=year(long22$Date2)
+long22$month=month(long22$Date2)
+
+#str(long22)
+###summary(long22$pm2.5)
+#table(long22$ano)
+
+#PM2.5 anual
+pm2.5anual22<-long22%>%group_by(Cod)%>%summarise(pm2.5=mean(pm2.5,na.rm=T))
+
+#summary(pm2.5anual22$pm2.5)
+
+pm2.5anual22$Miss<-is.na(pm2.5anual22$pm2.5)
+pm2.5anual22$cod6=as.integer(substring(pm2.5anual22$Cod, 1,6))
+
+pm2.5anual22 = pm2.5anual22 |> rename("CD_MUN" = Cod)
+
+Anual22 = left_join(dadosdon2022,pm2.5anual22, by = "CD_MUN") |> select(1,2,13) |> unique()
+
+########Ano 2023
+
+### PM2.5 diario
+long=melt(dadoscams2023, id.vars="Date")
+colnames(long)=c("Date","CodRes","pm2.5")
+long$Cod=substring(long$CodRes, 4,10)
+long$Cod2=substring(long$Cod, 1,6)
+long$UF=substring(long$Cod, 1,2)
+long$Date2=dmy(long$Date)
+
+long$ano=year(long$Date2)
+long$month=month(long$Date2)
+
+#str(long)
+###summary(long$pm2.5)
+#table(long$ano)
+
+#PM2.5 anual
+pm2.5anual<-long%>%group_by(Cod)%>%summarise(pm2.5=mean(pm2.5,na.rm=T))
+#summary(pm2.5anual$pm2.5)
+
+pm2.5anual$Miss<-is.na(pm2.5anual$pm2.5)
+pm2.5anual$cod6=as.integer(substring(pm2.5anual$Cod, 1,6))
+dadosdon2023$SIGLA_UF = dadosdon2022$SIGLA_UF  
+dadosdon2023$AREA_KM2 = dadosdon2022$AREA_KM2
+
+pm2.5anual = pm2.5anual |> rename("CD_MUN" = Cod)
+
+dadosdon2023$CD_MUN = as.character(dadosdon2023$CD_MUN)
+
+Anual = left_join(dadosdon2023,pm2.5anual, by = "CD_MUN") |> select(1,2,13) |> unique()
+
+long = long |> filter(UF == "32")
+long22 = long22 |> filter(UF == "32")
+###########################################################################################
+#long(23/22) refere-se aos dados diários do modelo CAMS por dia
+#anual(23/22) é o resumo média de cada municipio seguindo o modelo CAMS
+#dadosdon(23/22) é o método donkelar
+
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+cams23 = left_join(long |> select(-c(1:2,Cod2,ano)) |> rename("CD_MUN" = Cod) ,
+                   dadosdon2022 |> select(1:4),
+                   by = "CD_MUN") |> unique()
+
+cams22 = left_join(long22 |> select(-c(1:2,Cod2,ano)) |> rename("CD_MUN" = Cod) ,
+                   dadosdon2022 |> select(1:4),
+                   by = "CD_MUN") |> unique()
+
+#cams(22/23) agora se referindo ao modelo CAMS por dia
+
+#BOXPLOT CAMS  por mês
+
+boxcams23 = cams23 |> 
+  ggplot(mapping = aes(y = pm2.5,
+                       x = factor(month))) +
+  geom_boxplot() +
+  labs(x = "Mês",
+       y = "PM2.5") +
+  stat_summary(fun = mean, 
+               geom = "point", 
+               size = 2, 
+               color = "green")+
+  stat_summary(fun = median, 
+               geom = "point", 
+               size = 2, 
+               color = "red")+
+  theme_minimal()
+
+#boxcams23
+
+boxcams22 = cams22 |> 
+  ggplot(mapping = aes(y = pm2.5,
+                       x = factor(month))) +
+  geom_boxplot() +
+  labs(x = "Mês",
+       y = "PM2.5") +
+  stat_summary(fun = mean, 
+               geom = "point", 
+               size = 2, 
+               color = "green")+
+  stat_summary(fun = median, 
+               geom = "point", 
+               size = 2, 
+               color = "red")+
+  theme_minimal()
+
+#boxcams22
+
+#boxcams22 / boxcams23
+
+#Box modelo Donkelar por ano
+boxdonk22 = dadosdon2022 |> 
+  ggplot(mapping = aes(y = Media_PM25,
+                       x = factor(Mes))) +
+  geom_boxplot() +
+  labs(x = "Mês",
+       y = "PM2.5") +
+  stat_summary(fun = mean, 
+               geom = "point", 
+               size = 2, 
+               color = "green")+
+  stat_summary(fun = median, 
+               geom = "point", 
+               size = 2, 
+               color = "red")+
+  theme_minimal()
+
+boxdonk23 = dadosdon2023 |> 
+  ggplot(mapping = aes(y = Media_PM25,
+                       x = factor(Mes))) +
+  geom_boxplot() +
+  labs(x = "Mês",
+       y = "PM2.5") +
+  stat_summary(fun = mean, 
+               geom = "point", 
+               size = 2, 
+               color = "green")+
+  stat_summary(fun = median, 
+               geom = "point", 
+               size = 2, 
+               color = "red")+
+  theme_minimal()
+
+#boxdonk22 / boxdonk23 
+
+
+donk22  = dadosdon2022 |> select("pm2.5" = Media_PM25, CD_MUN, "month" = Mes) |> mutate(fonte = "Donkelar")
+cams22 = cams22 |> group_by(month,CD_MUN) |> summarise(pm2.5 = mean(pm2.5)) |> mutate(fonte = "cams")
+
+compara22 = rbind(donk22,cams22)
+
+box22 = compara22 |> 
+  ggplot(mapping = aes(y = pm2.5,
+                       x = factor(month),
+                       fill = fonte)) +
+  geom_boxplot() +
+  stat_summary(fun = mean, 
+               geom = "point", 
+               size = 2, 
+               color = "green",
+               position = position_dodge(width = 0.75))+
+  stat_summary(fun = median, 
+               geom = "point", 
+               size = 2, 
+               color = "red",
+               position = position_dodge(width = 0.75))+
+  theme_minimal()+
+  labs(x = "Mês",
+       y = "PM2.5",
+       title = "Ano de 2022",
+       caption = "ponto verde: Média | Ponto vermelho: Mediana")
+
+box22
+```
+
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+donk23  = dadosdon2023 |> select("pm2.5" = Media_PM25, CD_MUN, "month" = Mes) |> mutate(fonte = "Donkelar")
+cams23 = cams23 |> group_by(month,CD_MUN) |> summarise(pm2.5 = mean(pm2.5)) |> mutate(fonte = "cams")
+
+compara23 = rbind(donk23,cams23)
+
+box23 = compara23 |> 
+  ggplot(mapping = aes(y = pm2.5,
+                       x = factor(month),
+                       fill = fonte)) +
+  geom_boxplot() +
+  stat_summary(fun = mean, 
+               geom = "point", 
+               size = 2, 
+               color = "green",
+               position = position_dodge(width = 0.75))+
+  stat_summary(fun = median, 
+               geom = "point", 
+               size = 2, 
+               color = "red",
+               position = position_dodge(width = 0.75))+
+  theme_minimal()+
+  labs(x = "Mês",
+       y = "PM2.5",
+       title = "Ano de 2023",
+       caption = "ponto verde: Média | Ponto vermelho: Mediana")
+
+box23
+
+#box22 / box23
+```
+
+Em ambos os anos conseguimos observar que os valores de **PM2.5** no método **CAMS** estão muito mais concentrados.
+
+Tambem note-se que em janeiro e fevereiro os limites do nível de PM2.5 são maiores o que pode estar relacionado com a estação visto que são os meses de maior impacto do verão.
+
+Em 2023 no meio do ano os métodos ficaram mais igualitários. 
+
+já podemos notar uma diferença dos métodos empiricamente, mas conotaremos uma medição para essa relação
+
+## Mapas 
+
+Olhando pro recorte anual, peguei o mapa do Espirito Santo para representar geográficamente a média anual do PM2.5 de cada modelo em cada municipio.
+
+além dos modelos apresentamos a diferença entre os modelos em cada ano e a média dos 2 anos em cada modelo
+
+utliizamos faixas conhecidas globalmente para classificar a medidade de poluição no AR **PM2.5**, são elas:
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+######################################################################################
+
+mapa <- read_municipality(code_muni = "ES", year = 2024)
+
+#ggplot() +
+#  geom_sf(data = mapa, fill = "lightblue", color = "black") +
+#  theme_minimal() +
+#  labs(title = "Mapa do Estado do Espirito Santo") +
+#  coord_sf(
+#    xlim = c(-42, -39.5),  
+#    ylim = c(-21.5, -17.5) 
+#  ) +
+#  geom_sf_text(data = mapa, aes(label = name_muni), size = 2.5, color = "black")
+
+
+ES23 = left_join(mapa,Anual, by = c("name_muni" = "NM_MUN")) |> mutate(Ano = "2023")
+ES22 = left_join(mapa,Anual22, by = c("name_muni" = "NM_MUN")) |> mutate(Ano = "2022")
+EScams = rbind(ES22,ES23)
+
+anualdonk22 = donk22 |> group_by(CD_MUN) |> mutate(pm_2.5 = mean(pm2.5)) |> select(2,5) |> unique() |> rename("pm2.5" = pm_2.5)
+anualdonk23 = donk23 |> group_by(CD_MUN) |> mutate(pm_2.5 = mean(pm2.5)) |> select(2,5) |> unique() |> rename("pm2.5" = pm_2.5)
+
+anualdonk22 = left_join(anualdonk22, Anual22, by = "CD_MUN") |> select(1:3)
+anualdonk23 = left_join(anualdonk23, Anual22, by = "CD_MUN") |> select(1:3)
+
+ES23donk = left_join(mapa,anualdonk23, by = c("name_muni" = "NM_MUN")) |> mutate(Ano = "2023")
+ES22donk = left_join(mapa,anualdonk22, by = c("name_muni" = "NM_MUN")) |> mutate(Ano = "2022")
+
+ESdonk = rbind(ES22donk,ES23donk) |> rename("pm2.5" = pm2.5.x)
+
+diff = abs(EScams$pm2.5 - ESdonk$pm2.5)
+ESdiff = ESdonk |> select(-pm2.5) |> mutate(pm2.5 = diff)
+
+#ESdonk, EScams e ESdiff referem-se ao valor anual tanto no ano de de 22 quanto no ano de 23
+
+breaks <- c(0, 5, 10, 15, 20,25,30,35, Inf )
+legendas <- c(
+  "0-5: Ideal",
+  "5-10: Bom",
+  "10-15: Aceitável",
+  "15-20: Moderado",
+  "20-25: Ruim",
+  "25-30: Muito Ruim",
+  "30-35: Perigoso",
+  "35+: Crítico"
+)
+
+legendas
+
+EScams <- EScams %>%
+  mutate(
+    pm25_categoria = cut(
+      pm2.5,
+      breaks = breaks,
+      labels = legendas,
+      right = FALSE, 
+      include.lowest = TRUE
+    )
+  )
+  
+ESdonk <- ESdonk %>%
+  mutate(
+    pm25_categoria = cut(
+      pm2.5,
+      breaks = breaks,
+      labels = legendas,
+      right = FALSE, # Inclui o valor da esquerda no intervalo [0, 5), [5, 10), etc.
+      include.lowest = TRUE
+    )
+  )  
+  
+ESdiff <- ESdiff %>%
+  mutate(
+    pm25_categoria = cut(
+      pm2.5,
+      breaks = breaks,
+      labels = legendas,
+      right = FALSE, # Inclui o valor da esquerda no intervalo [0, 5), [5, 10), etc.
+      include.lowest = TRUE
+    )
+  )  
+
+cores_personalizadas <- c(
+  "0-5: Ideal" = "#4CAF50",       
+  "5-10: Bom" = "#8BC34A",       
+  "10-15: Aceitável" = "#CDDC39", 
+  "15-20: Moderado" = "#FFEB3B",  
+  "20-25: Ruim" = "#FFC107",       
+  "25-30: Muito Ruim" = "#FF9800", 
+  "30-35: Perigoso" = "#F44336",   
+  "35+: Crítico" = "#B71C1C"      
+)
+```
+
+Modelo CAMS:
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+
+map_cams = ggplot(data = EScams) +
+  geom_sf(mapping = aes(fill = pm25_categoria)) +
+  facet_wrap(~Ano) +
+  scale_fill_manual(
+    name = "Níveis de PM 2.5", 
+    values = cores_personalizadas,
+  ) +
+  theme_void() +
+  theme(legend.title = element_text(size = 16,
+                                    colour = "Red",
+                                    face = "bold"),
+        legend.text = element_text(size = 10,
+                                   colour = "Red")) +
+  coord_sf(
+    xlim = c(-42, -39.5),  
+    ylim = c(-21.5, -17.5) 
+  ) +
+  labs(title = "CAMS") +
+  geom_sf_text(data = EScams, aes(label = name_muni), size = 1.5, color = "black")
+
+ggplotly(map_cams)
+
+```
+
+Em ambos os anos no modelo CAMS a suma maioria dos municipios tiveram classificação BOM, salvo alguns na região central em 2022 que tiveram classificação aceitável.
+
+Modelo Donkelaar:
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+
+map_donk = ggplot(data = ESdonk) +
+  geom_sf(mapping = aes(fill = pm25_categoria)) +
+  facet_wrap(~Ano) +
+  scale_fill_manual(
+    name = "Níveis de PM 2.5", 
+    values = cores_personalizadas
+  ) +
+  theme_void() +
+  theme(legend.title = element_text(size = 16,
+                                    colour = "Red",
+                                    face = "bold"),
+        legend.text = element_text(size = 10,
+                                   colour = "Red")) +
+  coord_sf(
+    xlim = c(-42, -39.5),  
+    ylim = c(-21.5, -17.5) 
+  ) +
+  labs(title = "DONKELAR") +
+  geom_sf_text(data = ESdonk, aes(label = name_muni), size = 1.5, color = "black")
+
+ggplotly(map_donk)
+
+```
+
+Já no Donkelaar temos um maior nível de **PM2.5** pela região Sul.
+vemos o maior valor de poluição alcançado na cidade de Vitória, capital do estado.
+
+Diferença entre os modelos em cada ano:
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+
+map_diff = ggplot(data = ESdiff) +
+  geom_sf(mapping = aes(fill = pm25_categoria)) +
+  facet_wrap(~Ano) +
+  scale_fill_manual(
+    name = "Níveis de PM 2.5", 
+    values = cores_personalizadas,
+  ) +
+  theme_void() +
+  theme(legend.title = element_text(size = 16,
+                                    colour = "Red",
+                                    face = "bold"),
+        legend.text = element_text(size = 10,
+                                   colour = "Red")) +
+  coord_sf(
+    xlim = c(-42, -39.5),  
+    ylim = c(-21.5, -17.5) 
+  ) +
+  labs(title = "diferença") +
+  geom_sf_text(data = ESdiff, aes(label = name_muni), size = 1.5, color = "black")
+
+ggplotly(map_diff)
+
+#plot_mapa = map_donk / map_cams / map_diff
+#plot_mapa
+
+```
+
+Pelos resultados já esperava-se que ficaria igual seguindo as faixas conhecidas
+
+Sendo mais incisivo com a classificação de poluição para as médias dos anos pra cada modelo decidi retirar as faixas desagregando os municipios.
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+
+media_cams = EScams |> group_by(name_muni) |> summarise(pm2.5 = mean(pm2.5)) 
+media_donk = ESdonk |> group_by(name_muni) |> summarise(pm2.5 = mean(pm2.5)) 
+media_diff = ESdiff |> group_by(name_muni) |> summarise(pm2.5 = mean(pm2.5)) 
+
+m_diff = ggplot(data = media_diff) +
+  geom_sf(mapping = aes(fill = pm2.5)) +
+  scale_fill_gradient(name = "PM 2.5", 
+                      low = "White", 
+                      high = "Red") +
+  theme_void() +
+  theme(legend.title = element_text(size = 16,
+                                    colour = "Red",
+                                    face = "bold"),
+        legend.text = element_text(size = 10,
+                                   colour = "Red")) +
+  coord_sf(
+    xlim = c(-42, -39.5),  
+    ylim = c(-21.5, -17.5) 
+  ) +
+  labs(title = "media das diferença") +
+  geom_sf_text(data = media_diff, aes(label = name_muni), size = 1.5, color = "black")
+
+
+
+m_cams = ggplot(data = media_cams) +
+  geom_sf(mapping = aes(fill = pm2.5)) +
+  scale_fill_gradient(name = "PM 2.5", 
+                      low = "White", 
+                      high = "Red") +
+  theme_void() +
+  theme(legend.title = element_text(size = 16,
+                                    colour = "Red",
+                                    face = "bold"),
+        legend.text = element_text(size = 10,
+                                   colour = "Red")) +
+  coord_sf(
+    xlim = c(-42, -39.5),  
+    ylim = c(-21.5, -17.5) 
+  ) +
+  labs(title = "media do cams") +
+  geom_sf_text(data = media_cams, aes(label = name_muni), size = 1.5, color = "black")
+
+
+
+m_donk = ggplot(data = media_donk) +
+  geom_sf(mapping = aes(fill = pm2.5)) +
+  scale_fill_gradient(name = "PM 2.5", 
+                      low = "White", 
+                      high = "Red") +
+  theme_void() +
+  theme(legend.title = element_text(size = 16,
+                                    colour = "Red",
+                                    face = "bold"),
+        legend.text = element_text(size = 10,
+                                   colour = "Red")) +
+  coord_sf(
+    xlim = c(-42, -39.5),  
+    ylim = c(-21.5, -17.5) 
+  ) +
+  labs(title = "media do Donkelar") +
+  geom_sf_text(data = media_donk, aes(label = name_muni), size = 1.5, color = "black")
+
+trio = m_cams + m_cams + m_diff
+trio
+```
+
+Na media dos anos fica mais explicito que há uma concentração maior de poluição do AR pela região central e na parte metropolitana da cidade perto de vitoria
+
+## Resumo 
+Alguns dados interessantes sobre o estado do Espirito Santo:
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+#### Descritiva ####
+Descri = ESdonk |> select(Ano,"Municipio" = name_muni) |> mutate(pm2.5_donk = ESdonk$pm2.5,
+                                            pm2.5_cams = EScams$pm2.5,
+                                            pm2.5_diff = ESdiff$pm2.5)
+
+tabela_resumo <- Descri %>%
+  group_by(Ano) %>%
+  summarise(
+    media_donk = mean(pm2.5_donk, na.rm = TRUE),
+    desvio_padrao_donk = sd(pm2.5_donk, na.rm = TRUE),
+    max_donk = max(pm2.5_donk, na.rm = TRUE),
+    municipio_max_donk = Municipio[which.max(pm2.5_donk)],
+    min_donk = min(pm2.5_donk, na.rm = TRUE),
+    municipio_min_donk = Municipio[which.min(pm2.5_donk)],
+    media_cams = mean(pm2.5_cams, na.rm = TRUE),
+    desvio_padrao_cams = sd(pm2.5_cams, na.rm = TRUE),
+    max_cams = max(pm2.5_cams, na.rm = TRUE),
+    municipio_max_cams = Municipio[which.max(pm2.5_cams)],
+    min_cams = min(pm2.5_cams, na.rm = TRUE),
+    municipio_min_cams = Municipio[which.min(pm2.5_cams)],
+    media_diff = mean(pm2.5_diff, na.rm = TRUE),
+    desvio_padrao_diff = sd(pm2.5_diff, na.rm = TRUE),
+    max_diff = max(pm2.5_diff, na.rm = TRUE),
+    municipio_max_diff = Municipio[which.max(pm2.5_diff)],
+    min_diff = min(pm2.5_diff, na.rm = TRUE),
+    municipio_min_diff = Municipio[which.min(pm2.5_diff)],
+    .groups = 'drop' 
+  )
+
+tabela_resumo$geom <- NULL
+
+tabela_resumo = t(tabela_resumo)
+colnames(tabela_resumo) = tabela_resumo[1,]
+tabela_resumo = tabela_resumo[-1,]
+kable(tabela_resumo, caption = "Resumo das Métricas de PM2.5 (2022-2023)") %>%
+  kable_styling(
+  bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+  full_width = FALSE
+)
+```
+
+## Análise de Dispersão
+
+No gráfico de dispersão cada posição está relacionado a um valor de PM2.5 de cada método pra cada mês de um certo municipío 
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+#### parte 2 ####
+
+dispersao22 = compara22 |> pivot_wider(names_from = fonte,
+                                       values_from = pm2.5)
+
+disp22 = ggplot(dispersao22, aes(x = Donkelar, y = cams)) +
+  geom_point(size = 3, alpha = 0.7, color = "blue") +
+  geom_smooth(method = "lm", se = FALSE, color = "darkred") +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black") +
+  labs(
+    title = "Comparação de Métodos de Medição de PM2.5 em 2022",
+    subtitle = "Cada ponto representa um mês",
+    x = "PM2.5 Donkelar",
+    y = "PM2.5 Cams"
+  ) +
+  theme_bw()
+
+disp22
+dispersao23 = compara23 |> pivot_wider(names_from = fonte,
+                                       values_from = pm2.5)
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+
+ggplot(dispersao23, aes(x = Donkelar, y = cams)) +
+  geom_point(size = 3, alpha = 0.7, color = "blue") +
+  geom_smooth(method = "lm", se = FALSE, color = "darkred") +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black") +
+  labs(
+    title = "Comparação de Métodos de Medição de PM2.5 em 2023",
+    subtitle = "Cada ponto representa um mês",
+    x = "PM2.5 Donkelar",
+    y = "PM2.5 Cams"
+  ) +
+  theme_bw()
+
+```
+
+Pelo posição de cada perfil, e a linha de regressão vê que fica claro que tem uma correlação, até mesmo por diversos parametros estarem iguais em ambos os metodos, elas seguem um angulo plausível ao compreendimento de que há uma relação   
+
+## Correlação
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+#correlação de Pearson e de Spearman
+cor.test(dispersao22$Donkelar,dispersao22$cams)
+cor(dispersao22$Donkelar,dispersao22$cams)
+
+cor.test(dispersao22$Donkelar,dispersao22$cams, method = "spearman")
+
+cor.test(dispersao23$Donkelar,dispersao23$cams)
+cor(dispersao23$Donkelar,dispersao23$cams)
+
+cor.test(dispersao23$Donkelar,dispersao23$cams, method = "spearman")
+
+```
+
+A conclusão principal é que existe uma relação positiva e estatisticamente significante entre os métodos "Donkelaar" e "cams" nos dois anos, mas essa relação foi visivelmente mais fraca em 2023 do que em 2022.
+
+ambos os testes deram uma correlação moderada entre os metodos.
+
+## Gráfico de Bland-Altman
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+bland22 <- dispersao22 %>%
+  mutate(
+    media = (Donkelar + cams) / 2,
+    diferenca = Donkelar - cams
+  )
+
+bland23 <- dispersao23 %>%
+  mutate(
+    media = (Donkelar + cams) / 2,
+    diferenca = Donkelar - cams
+  )
+
+media_diff22 <- mean(bland22$diferenca, na.rm = TRUE)
+sd_diff22 <- sd(bland22$diferenca, na.rm = TRUE)
+limite_superior22 <- media_diff22 + (1.96 * sd_diff22)
+limite_inferior22 <- media_diff22 - (1.96 * sd_diff22)
+
+media_diff23 <- mean(bland22$diferenca, na.rm = TRUE)
+sd_diff23 <- sd(bland22$diferenca, na.rm = TRUE)
+limite_superior23 <- media_diff23 + (1.96 * sd_diff23)
+limite_inferior23 <- media_diff23 - (1.96 * sd_diff23)
+
+ggplot(bland22, aes(x = media, y = diferenca)) +
+  geom_point(alpha = 0.6) +
+  geom_hline(
+    yintercept = media_diff22, 
+    color = "blue", 
+    linetype = "dashed", 
+    linewidth = 1
+  ) +
+  geom_hline(
+    yintercept = limite_superior22, 
+    color = "red", 
+    linetype = "dotted", 
+    linewidth = 1
+  ) +
+  geom_hline(
+    yintercept = limite_inferior22, 
+    color = "red", 
+    linetype = "dotted", 
+    linewidth = 1
+  ) +
+  labs(
+    title = "Gráfico de Bland-Altman: Comparação Donkelar vs. cams em 2022",
+    x = "Média das Medições ((Donkelar + cams) / 2)",
+    y = "Diferença das Medições (Donkelar - cams)"
+  ) +
+  theme_bw()
+
+ggplot(bland23, aes(x = media, y = diferenca)) +
+  geom_point(alpha = 0.6) +
+  geom_hline(
+    yintercept = media_diff23, 
+    color = "blue", 
+    linetype = "dashed", 
+    linewidth = 1
+  ) +
+  geom_hline(
+    yintercept = limite_superior23, 
+    color = "red", 
+    linetype = "dotted", 
+    linewidth = 1
+  ) +
+  geom_hline(
+    yintercept = limite_inferior23, 
+    color = "red", 
+    linetype = "dotted", 
+    linewidth = 1
+  ) +
+  labs(
+    title = "Gráfico de Bland-Altman: Comparação Donkelar vs. cams em 2023",
+    x = "Média das Medições ((Donkelar + cams) / 2)",
+    y = "Diferença das Medições (Donkelar - cams)"
+  ) +
+  theme_bw()
+
+```
+
+Em ambos os anos, o modelo "Donkelar" mede, sistematicamente, valores mais altos que o "cams" (um viés positivo).
+
+No entanto, o padrão desse erro mudou drasticamente:
+
+Em 2022, a diferença era consistente (viés uniforme).
+
+Em 2023, a diferença explodiu em dias de alta poluição (viés proporcional).
+
+Isso explica perfeitamente por que sua correlação foi mais fraca em 2023 (r=0.35) do que em 2022 (r=0.48).
+
+## Medida de Concordância 
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+library(irr)
+
+icc(dispersao22 |> select(Donkelar,cams),
+    model = "twoway",
+    unit = "single")
+
+icc(dispersao22 |> select(Donkelar,cams),
+    model = "twoway",
+    type = "agreement",
+    unit = "single")
+
+icc(dispersao23 |> select(Donkelar,cams),
+    model = "twoway",
+    unit = "single")
+
+```
+Ambos os anos tiveram um teste de concordância < 0.50: Concordância Ruim
+
+
+Um valor de 0.334 é classificado como "Ruim". Isso prova que, se você pegar uma medição do Donkelar e uma do cams para o mesmo dia e local, elas não serão iguais. A concordância nos valores absolutos é baixíssima.
+
+## Conclusão
+
+O ICC de Consistência (Consistency) = 0.396 e suas Correlações (r = 0.48 e r = 0.35).
+Mesmo se esquecermos os valores absolutos e apenas perguntarmos: "Quando o Donkelaar sobe, o Cams também sobe?", a resposta é "apenas mais ou menos". Um valor de 0.396 também é classificado como "Ruim". Isso mostra que os modelos não seguem confiavelmente o mesmo padrão de poluição.
+
+
+Viés Sistemático (Erro Fixo): O gráfico de 2022 mostra que a linha de diferença média (linha azul) está sempre acima de zero. Isso prova que o Donkelar reporta, sistematicamente, valores mais altos que o cams.
+
+Viés Proporcional (Erro Variável): O gráfico de 2023 mostra um padrão de "cone". Isso prova que a discordância piora à medida que a poluição aumenta. Em dias limpos, eles quase concordam, mas em dias muito poluídos, o Donkelar reporta valores drasticamente mais altos que o cams.
+
+Os modelos Donkelar e cams não medem a mesma coisa. A análise quantitativa (ICC = 0.334) prova que a concordância absoluta é ruim. A análise visual (Bland-Altman) explica o porquê: o modelo Donkelar apresenta um viés positivo (mede a mais) que se torna proporcionalmente maior em dias de alta poluição.
