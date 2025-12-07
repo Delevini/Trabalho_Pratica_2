@@ -7,9 +7,11 @@ ui <- dashboardPage(
   dashboardSidebar(
     sidebarMenu(
       menuItem("Visão Temporal", tabName = "temporal", icon = icon("calendar")),
-      menuItem("Análise Espacial", tabName = "Dispersao", icon = icon("map-marked-alt")),
+      menuItem("Relação", tabName = "Dispersao", icon = icon("braille")),
       menuItem("Validação Estatística", tabName = "Bland-Altman", icon = icon("chart-line")),
-      menuItem("Base de Dados", tabName = "dados", icon = icon("table"))
+      menuItem("Análise Espacial", tabName = "dados", icon = icon("map-marked-alt")),
+      menuItem("Resumo Descritivo", tabName = "resumo", icon = icon("clipboard-list")),
+      menuItem("Testes Estatísticos", tabName = "testes_est", icon = icon("calculator"))
     ),
     hr()
   ),
@@ -128,12 +130,77 @@ ui <- dashboardPage(
                   plotOutput("plot_mapa_es", height = "85vh")
                 )
               )
-        )
+        ),
+      tabItem(tabName = "resumo",
+              fluidRow(
+                box(
+                  title = "Configuração do Resumo",
+                  status = "primary",
+                  solidHeader = TRUE,
+                  width = 3,
+                  
+                  selectInput(
+                    inputId = "resumo_modelo",
+                    label = "Selecione o Modelo:",
+                    choices = c("Donkelar", "CAMS"),
+                    selected = "Donkelar"
+                  ),
+                  
+                  hr(),
+                  
+                  selectInput(
+                    inputId = "resumo_ano",
+                    label = "Selecione o Ano:",
+                    choices = c("2022", "2023"),
+                    selected = "2023"
+                  )
+                ),
+                box(
+                  title = "Estatísticas Descritivas",
+                  status = "primary",
+                  width = 9,
+                  DTOutput("tabela_estatisticas",height = "85vh")
+                )
+              )
+      ),
+      tabItem(tabName = "testes_est",
+              fluidRow(
+                box(
+                  title = "Parâmetros do Teste",
+                  status = "primary",
+                  solidHeader = TRUE,
+                  width = 3,
+                  selectInput(
+                    inputId = "teste_ano",
+                    label = "Selecione o Ano:",
+                    choices = c("2022", "2023"),
+                    selected = "2023"
+                  ),
+                  hr(),
+                  radioButtons(
+                    inputId = "teste_tipo",
+                    label = "Escolha o Teste:",
+                    choices = c(
+                      "Correlação de Pearson" = "pearson",
+                      "Correlação de Spearman" = "spearman",
+                      "Concordância (ICC)" = "icc"
+                    )
+                  ),
+                  p(class = "text-muted", style = "font-size: 0.9em;",
+                    "Nota: O ICC utiliza o modelo 'twoway' e unit 'single' (concordância absoluta).")
+                ),
+                box(
+                  title = "Resultados Detalhados",
+                  status = "primary",
+                  width = 9,
+                  verbatimTextOutput("saida_teste"),
+                  uiOutput("interpretacao_teste")
+                )
+              )
+      )
       )
     )
   )  
-
-
 
 server <- function(input, output) {
   dados_selecionados <- reactive({
@@ -188,7 +255,7 @@ server <- function(input, output) {
       geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black") +
       labs(
         title = "Comparação de Métodos de Medição de PM2.5",
-        subtitle = paste("Ano de", input$select_ano_disp), # Subtítulo dinâmico
+        subtitle = paste("Ano de", input$select_ano_disp), 
         x = "PM2.5 Donkelar",
         y = "PM2.5 Cams"
       ) +
@@ -228,20 +295,20 @@ server <- function(input, output) {
   
   dados_mapa_final <- reactive({
     tabela_base <- switch(input$mapa_modelo,
-                          "Donkelar" = ESdonk,  # Se selecionar Donkelar, usa ESdonk
-                          "CAMS" = EScams,      # Se selecionar CAMS, usa EScams
-                          "Diferença" = ESdiff) # Se selecionar Diferença, usa ESdiff
+                          "Donkelar" = ESdonk,  
+                          "CAMS" = EScams,     
+                          "Diferença" = ESdiff) 
     if (input$mapa_ano == "Média (22-23)") {
       tabela_base %>%
-        group_by(name_muni, geom) %>% # Mantém a geometria
+        group_by(name_muni, geom) %>% 
         summarise(pm2.5 = mean(pm2.5, na.rm = TRUE), .groups = "drop") %>%
         mutate(
           pm25_categoria = cut(
             pm2.5,
-            breaks = c(0, 5, 10, 15, 20, 25, 30, 35, Inf), # Seus breaks originais
+            breaks = c(0, 5, 10, 15, 20, 25, 30, 35, Inf), 
             labels = c("0-5: Ideal", "5-10: Bom", "10-15: Aceitável", 
                        "15-20: Moderado", "20-25: Ruim", "25-30: Muito Ruim", 
-                       "30-35: Perigoso", "35+: Crítico"), # Suas legendas originais
+                       "30-35: Perigoso", "35+: Crítico"),
             right = FALSE, 
             include.lowest = TRUE
           )
@@ -257,9 +324,9 @@ server <- function(input, output) {
       geom_sf(mapping = aes(fill = pm25_categoria), color = "black", size = 0.1) +
       geom_sf_text(
         aes(label = name_muni), 
-        size = 4,          # Tamanho da fonte (ajuste se precisar)
-        color = "black",     # Cor do texto
-        check_overlap = TRUE # Evita que um nome escreva em cima do outro
+        size = 4,          
+        color = "black",     
+        check_overlap = TRUE 
       ) +
       scale_fill_manual(
         name = "Níveis de PM 2.5",
@@ -273,11 +340,84 @@ server <- function(input, output) {
       ) +
       theme(
         legend.title = element_text(size = 16, colour = "Red", face = "bold"),
-        legend.text = element_text(size = 12, colour = "Red"), # Aumentei um pouco a fonte
-        plot.title = element_text(size = 20, face = "bold", hjust = 0.5), # Centraliza título
+        legend.text = element_text(size = 12, colour = "Red"), 
+        plot.title = element_text(size = 20, face = "bold", hjust = 0.5), 
         plot.subtitle = element_text(size = 16, hjust = 0.5)
       ) +
       coord_sf(xlim = c(-42, -39.5), ylim = c(-21.5, -17.5))
+  })
+  output$tabela_estatisticas <- renderDT({
+    df_base <- switch(input$resumo_modelo,
+                      "Donkelar" = ESdonk,
+                      "CAMS" = EScams,)
+
+    df_filtrado <- df_base %>% 
+      filter(Ano == input$resumo_ano)
+
+    media <- mean(df_filtrado$pm2.5, na.rm = TRUE)
+    desvio <- sd(df_filtrado$pm2.5, na.rm = TRUE)
+    
+    max_val <- max(df_filtrado$pm2.5, na.rm = TRUE)
+
+    muni_max <- df_filtrado$name_muni[which.max(df_filtrado$pm2.5)]
+    
+    min_val <- min(df_filtrado$pm2.5, na.rm = TRUE)
+
+    muni_min <- df_filtrado$name_muni[which.min(df_filtrado$pm2.5)]
+    
+    tabela_final <- data.frame(
+      Indicador = c(
+        "Média",
+        "Desvio Padrão",
+        "Valor Máximo",
+        "Município (Máx)",
+        "Valor Mínimo",
+        "Município (Mín)"
+      ),
+      Valor = c(
+        round(media, 4),      
+        round(desvio, 4),
+        round(max_val, 4),
+        as.character(muni_max), 
+        round(min_val, 4),
+        as.character(muni_min)
+      )
+    )
+    datatable(tabela_final, 
+              options = list(dom = 't', paging = FALSE), 
+              rownames = FALSE,
+              colnames = c("Métrica Estatística", "Resultado"))
+  })
+  output$saida_teste <- renderPrint({
+
+    df_base <- if(input$teste_ano == "2022") compara22 else compara23
+
+    df_wide <- df_base %>%
+      pivot_wider(names_from = fonte, values_from = pm2.5) %>%
+      drop_na() 
+
+    if (input$teste_tipo == "pearson") {
+      
+      print(paste("--- Teste de Correlação de Pearson (Linear) - Ano", input$teste_ano, "---"))
+      cor.test(df_wide$Donkelar, df_wide$cams, method = "pearson")
+      
+    } else if (input$teste_tipo == "spearman") {
+      
+      print(paste("--- Teste de Correlação de Spearman (Postos) - Ano", input$teste_ano, "---"))
+      cor.test(df_wide$Donkelar, df_wide$cams, method = "spearman")
+      
+    } else if (input$teste_tipo == "icc") {
+      print(paste("--- Intraclass Correlation Coefficient (ICC) - Ano", input$teste_ano, "---"))
+      dados_icc <- df_wide %>% select(Donkelar, cams)
+      icc(dados_icc, model = "twoway", type = "agreement", unit = "single")
+    }
+  })
+  output$interpretacao_teste <- renderUI({
+    if (input$teste_tipo == "icc") {
+      helpText("Interpretação ICC: < 0.5 (Ruim), 0.5-0.75 (Moderado), 0.75-0.9 (Bom), > 0.9 (Excelente)")
+    } else {
+      helpText("Interpretação Correlação: 0 (Sem relação) a 1 (Relação Perfeita). P-value < 0.05 indica significância.")
+    }
   })
 ####
 }
