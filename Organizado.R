@@ -369,7 +369,7 @@ cor.test(dispersao22$Donkelar,dispersao22$cams, method = "spearman")
 cor(dispersao23$Donkelar,dispersao23$cams)
 cor.test(dispersao23$Donkelar,dispersao23$cams)
 cor.test(dispersao23$Donkelar,dispersao23$cams, method = "spearman")
-
+####
 bland22 <- dispersao22 %>%
   mutate(
     media = (Donkelar + cams) / 2,
